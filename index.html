@@ -42,7 +42,7 @@ body { background: #eef2f6; font-family: 'Segoe UI', Tahoma, sans-serif; }
 </select>
 </div>
 
-<!-- परिक्षेत्र चयन बॉक्स -->
+<!-- परिक्षेत्र चयन बॉक्स: केवल Operator और Range Admin पर ही प्रदर्शित होगा -->
 <div class="mb-3" id="rangeSelectDiv" style="display:none;">
 <label class="form-label fw-bold">परिक्षेत्र चुनें (Select Range):</label>
 <select class="form-select" id="loginRange">
@@ -177,6 +177,7 @@ body { background: #eef2f6; font-family: 'Segoe UI', Tahoma, sans-serif; }
 <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#tabOp3" onclick="loadOperatorApprovedVouchers()">🖨️ 4. स्वीकृत वाउचर (पूर्ण PDF एवं शेयर)</button></li>
 </ul>
 <div class="tab-content">
+<!-- 1. श्रमिक प्रविष्टि + एक्सेल + AI OCR -->
 <div class="tab-pane fade show active" id="tabOp1">
 <div class="row">
 <div class="col-md-7">
@@ -388,7 +389,7 @@ body { background: #eef2f6; font-family: 'Segoe UI', Tahoma, sans-serif; }
 </div>
 </div>
 
-<!-- वाउचर विवरण मोडल -->
+<!-- वाउचर पूर्ण विवरण समीक्षा मोडल -->
 <div class="modal fade" id="voucherDetailsModal" tabindex="-1" aria-hidden="true">
 <div class="modal-dialog modal-lg modal-dialog-scrollable">
 <div class="modal-content">
@@ -415,7 +416,7 @@ const type = document.getElementById('vTypeSelector').value;
 document.getElementById('workVoucherQtyDiv').style.display = (type === "SURAKSHA") ? "none" : "block";
 }
 
-// परिक्षेत्र ड्रॉपडाउन नियंत्रण (तत्काल एवं स्थायी प्रदर्शन)
+// परिक्षेत्र ड्रॉपडाउन टॉगल नियंत्रण (केवल ऑपरेटर व रेंज एडमिन पर दृश्यमान)
 function toggleRangeDropdown() {
 const role = document.getElementById('loginRole').value;
 const rangeDiv = document.getElementById('rangeSelectDiv');
@@ -434,11 +435,11 @@ window.addEventListener('DOMContentLoaded', function() {
 toggleVoucherTypeFields();
 toggleRangeDropdown();
 
-// यदि Apps Script परिवेश में है
+// 1. Google Apps Script वातावरण से परिक्षेत्र लोड करना
 if (typeof google !== "undefined" && google.script && google.script.run) {
 google.script.run.withSuccessHandler(populateRangeDropdown).getActiveRangesList();
 } else {
-// GitHub Pages या सामान्य वेब सर्वर पर स्वतः डिफ़ॉल्ट परिक्षेत्र भरना
+// 2. बाहरी वेब होस्टिंग हेतु डिफ़ॉल्ट परिक्षेत्र सूची
 populateRangeDropdown(["Unit-1", "Bhopal", "Shivpuri", "Paryavaran Vaniki"]);
 }
 });
@@ -508,12 +509,12 @@ alert("सर्वर त्रुटि: " + err.message);
 })
 .authenticateUser(range, role, pin);
 } else {
-// GitHub Pages स्थानीय सिमुलेशन (Fallback)
+// ऑफ़लाइन / वेब सिमुलेशन
 setTimeout(function() {
 processAuthSuccess({
 success: true,
 userId: "USR-LOCAL",
-name: (role === 'OPERATOR' ? "कंप्यूटर ऑपरेटर" : (role === 'RANGE_ADMIN' ? "परिक्षेत्र वनाधिकारी" : "अधिकारी")),
+name: (role === 'OPERATOR' ? "कंप्यूटर ऑपरेटर" : (role === 'RANGE_ADMIN' ? "परिक्षेत्र वनाधिकारी" : "वरिष्ठ अधिकारी")),
 role: role,
 range: range || "Unit-1"
 });
