@@ -1,35 +1,1073 @@
 <!DOCTYPE html>
 <html lang="hi">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>वन विभाग - ई-वाउचर एवं भुगतान प्रबंधन प्रणाली</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body, html {
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            background-color: #f1f5f9;
-        }
-        iframe {
-            width: 100%;
-            height: 100%;
-            border: none;
-            display: block;
-        }
-    </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>वन विभाग - ई-वाउचर एवं भुगतान प्रबंधन प्रणाली</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+body { background: #eef2f6; font-family: 'Segoe UI', Tahoma, sans-serif; }
+.card { border: none; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+.nav-pills .nav-link.active { background-color: #0d6efd; font-weight: bold; }
+.login-hero { max-width: 490px; margin: 45px auto 20px auto; }
+.ocr-display-box { background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-top: 14px; }
+.login-footer-badge { text-align: center; color: #475569; font-size: 8.5pt; margin-top: 15px; padding: 8px; border-top: 1px solid #e2e8f0; }
+.sync-banner { position: fixed; top: 10px; right: 15px; z-index: 10000; display: none; }
+.excel-box { background: #eaf5ea; border: 2px dashed #28a745; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
+.form-section-title { font-size: 9.5pt; font-weight: bold; color: #1e3a8a; border-bottom: 1.5px solid #cbd5e1; padding-bottom: 4px; margin: 10px 0 6px 0; }
+</style>
 </head>
 <body>
-    <!-- नीचे src के अंदर अपना पूरा Google Apps Script Web App URL पेस्ट करें -->
-    <iframe 
-        src="https://script.google.com/macros/s/AKfycbwVHU1YvEsUActyi9QJlVoOgbix_dak9RsrJU1Z8xCKCuOSFlgl6oOqKnCLxlmdkIn6cQ/exec" 
-        allow="camera; microphone; geolocation"
-        title="Forest E-Voucher Portal">
-    </iframe>
+<div id="syncBanner" class="sync-banner badge bg-warning text-dark p-2 shadow fs-6">
+<span id="syncText">⏳ ऑफ़लाइन मोड: डेटा डिवाइस में सुरक्षित हो रहा है</span>
+</div>
+
+<!-- 1. लॉगिन विंडो -->
+<div id="loginScreen" class="container">
+<div class="card login-hero p-4 shadow">
+<div class="text-center mb-3">
+<h4 class="text-primary fw-bold">🌲 वन विभाग - ई-वाउचर प्रणाली</h4>
+<p class="text-muted mb-1">सुरक्षित 4-स्तरीय अधिकृत लॉगिन</p>
+</div>
+<form onsubmit="handleLogin(event)">
+<div class="mb-3">
+<label class="form-label fw-bold">लॉगिन रोल चुनें:</label>
+<select class="form-select" id="loginRole" onchange="toggleRangeDropdown()" required>
+<option value="">-- रोल चुनें --</option>
+<option value="OPERATOR">Level 3: कंप्यूटर ऑपरेटर (Operator)</option>
+<option value="RANGE_ADMIN">Level 2: परिक्षेत्र वनाधिकारी (Range Admin)</option>
+<option value="HEAD_OFFICE">Level 4: वरिष्ठ कार्यालय (Head Office / DFO)</option>
+<option value="MASTER_ADMIN">Level 1: मास्टर एडमिन (Master Admin)</option>
+</select>
+</div>
+
+<!-- परिक्षेत्र चयन बॉक्स -->
+<div class="mb-3" id="rangeSelectDiv" style="display:none;">
+<label class="form-label fw-bold">परिक्षेत्र चुनें (Select Range):</label>
+<select class="form-select" id="loginRange">
+<option value="">-- परिक्षेत्र चुनें --</option>
+</select>
+</div>
+
+<div class="mb-3">
+<label class="form-label fw-bold">सुरक्षा पिन (PIN):</label>
+<input type="password" class="form-control" id="loginPin" placeholder="4-अंकों का पिन दर्ज करें" required>
+</div>
+<button type="submit" class="btn btn-primary w-100 py-2 fw-bold" id="btnLogin">🔓 डैशबोर्ड में प्रवेश करें</button>
+</form>
+<div class="login-footer-badge">
+✨ <strong>Developed by : Ashish Samadhiya, Forest Ranger, Bhopal, Madhya Pradesh</strong>
+</div>
+</div>
+</div>
+
+<!-- 2. मुख्य डैशबोर्ड -->
+<div id="appScreen" style="display:none;" class="p-3">
+<div class="bg-white p-3 rounded shadow-sm mb-3 d-flex justify-content-between align-items-center">
+<div>
+<h4 class="m-0 text-primary fw-bold">🌲 वन विभाग ई-वाउचर प्रबंधन प्रणाली</h4>
+<small class="text-muted" id="userBadgeInfo">लोड हो रहा है...</small>
+</div>
+<div>
+<button class="btn btn-sm btn-outline-secondary me-2" onclick="promptChangeMyPIN()">🔑 पिन बदलें</button>
+<button class="btn btn-sm btn-danger" onclick="handleLogout()">🚪 लॉगआउट</button>
+</div>
+</div>
+
+<!-- ================= LEVEL 1: MASTER ADMIN ================= -->
+<div id="viewMasterAdmin" style="display:none;">
+<div class="row">
+<div class="col-md-5">
+<div class="card p-3 mb-3">
+<h5 class="fw-bold text-primary">➕ नया परिक्षेत्र व एडमिन/ऑपरेटर बनाएं</h5>
+<form onsubmit="submitNewRange(event)">
+<div class="mb-2"><label class="form-label">परिक्षेत्र का नाम *</label><input type="text" class="form-control" id="mRangeName" required></div>
+<div class="mb-2"><label class="form-label">रेंज एडमिन का नाम *</label><input type="text" class="form-control" id="mAdminName" required></div>
+<div class="mb-2"><label class="form-label">रेंज एडमिन पिन *</label><input type="text" class="form-control" id="mAdminPin" value="1234" required></div>
+<div class="mb-2"><label class="form-label">ऑपरेटर का नाम *</label><input type="text" class="form-control" id="mOpName" required></div>
+<div class="mb-3"><label class="form-label">ऑपरेटर पिन *</label><input type="text" class="form-control" id="mOpPin" value="0000" required></div>
+<button type="submit" class="btn btn-success w-100">🚀 परिक्षेत्र व शीट्स तैयार करें</button>
+</form>
+</div>
+</div>
+<div class="col-md-7">
+<div class="card p-3">
+<div class="d-flex justify-content-between align-items-center mb-2">
+<h5 class="fw-bold">👥 सभी पंजीकृत उपयोगकर्ता व पिन नियंत्रण</h5>
+<button class="btn btn-sm btn-outline-primary" onclick="loadMasterUsers()">🔄 रीफ्रेश</button>
+</div>
+<div class="table-responsive" style="max-height: 450px;">
+<table class="table table-bordered table-sm align-middle" id="masterUserTable">
+<thead class="table-light"><tr><th>ID</th><th>नाम</th><th>रोल</th><th>परिक्षेत्र</th><th>पिन</th><th>कार्रवाई</th></tr></thead>
+<tbody></tbody>
+</table>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- ================= LEVEL 2: RANGE ADMIN ================= -->
+<div id="viewRangeAdmin" style="display:none;">
+<ul class="nav nav-pills mb-3">
+<li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#tabAdmMaster" onclick="loadAdminMaster()">🔍 1. श्रमिक सत्यापन एवं संशोधन अनुरोध</button></li>
+<li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#tabAdmVoucher" onclick="loadAdminVouchers()">💳 2. लंबित वाउचर समीक्षा एवं अनुमोदन</button></li>
+<li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#tabAdmHistory" onclick="loadAdminApprovedVouchersHistory()">🖨️ 3. स्वीकृत वाउचर अभिलेख (PDF देखें)</button></li>
+</ul>
+<div class="tab-content">
+<div class="tab-pane fade show active" id="tabAdmMaster">
+<div class="card p-3 mb-3 border-warning">
+<h5 class="fw-bold text-warning">✏️ ऑपरेटर द्वारा भेजे गए श्रमिक संशोधन अनुरोध</h5>
+<div class="table-responsive">
+<table class="table table-bordered table-sm align-middle" id="adminEditRequestsTable">
+<thead class="table-light"><tr><th>ID</th><th>नाम</th><th>खाता संख्या</th><th>IFSC</th><th>सुधार का कारण</th><th>कार्रवाई</th></tr></thead>
+<tbody></tbody>
+</table>
+</div>
+</div>
+
+<div class="card p-3 mb-3">
+<h5 class="fw-bold text-primary">⏳ सत्यापन हेतु लंबित नवीन श्रमिक</h5>
+<div class="table-responsive"><table class="table table-bordered table-hover align-middle" id="adminPendingTable"><thead class="table-light"><tr><th>ID</th><th>वेंडर नं.</th><th>नाम</th><th>पिता</th><th>पहचान</th><th>खाता</th><th>IFSC</th><th>बैंक प्रूफ</th><th>कार्रवाई</th></tr></thead><tbody></tbody></table></div>
+</div>
+
+<div class="card p-3">
+<h5 class="fw-bold text-success">✅ स्वीकृत श्रमिक मास्टर सूची</h5>
+<div class="table-responsive" style="max-height: 250px;"><table class="table table-sm table-striped" id="adminApprovedTable"><thead class="table-light"><tr><th>ID</th><th>वेंडर नं.</th><th>नाम</th><th>पिता</th><th>खाता</th><th>IFSC</th><th>विवरण</th></tr></thead><tbody></tbody></table></div>
+</div>
+</div>
+
+<div class="tab-pane fade" id="tabAdmVoucher">
+<div class="card p-3">
+<div class="d-flex justify-content-between align-items-center mb-2">
+<h5 class="fw-bold text-primary m-0">लंबित वाउचर समीक्षा एवं अनुमोदन</h5>
+<button class="btn btn-sm btn-outline-primary" onclick="loadAdminVouchers()">🔄 रीफ्रेश करें</button>
+</div>
+<div id="adminVoucherContainer">लोड हो रहा है...</div>
+</div>
+</div>
+
+<div class="tab-pane fade" id="tabAdmHistory">
+<div class="card p-3">
+<div class="d-flex justify-content-between align-items-center mb-2">
+<h5 class="fw-bold text-success m-0">🖨️ परिक्षेत्र के स्वीकृत वाउचर अभिलेख (Signed PDFs)</h5>
+<button class="btn btn-sm btn-outline-success" onclick="loadAdminApprovedVouchersHistory()">🔄 रीफ्रेश करें</button>
+</div>
+<div class="table-responsive">
+<table class="table table-bordered table-hover align-middle" id="adminHistoryTable">
+<thead class="table-light"><tr><th>वाउचर नं.</th><th>प्रकार</th><th>कार्य विवरण</th><th>अवधि</th><th>श्रमिक</th><th>कुल राशि</th><th>स्वीकृति दिनांक</th><th>हस्ताक्षरित PDF</th></tr></thead>
+<tbody></tbody>
+</table>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- ================= LEVEL 3: OPERATOR ================= -->
+<div id="viewOperator" style="display:none;">
+<ul class="nav nav-pills mb-3">
+<li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#tabOp1">👤 1. श्रमिक मास्टर प्रविष्टि (एक्सेल व AI OCR)</button></li>
+<li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#tabOpEdit">🔍 2. स्वीकृत श्रमिक खोजें व सुधार अनुरोध</button></li>
+<li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#tabOp2" onclick="initOperatorVoucherTab()">📝 3. वाउचर तैयार करें (Work / Suraksha)</button></li>
+<li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#tabOp3" onclick="loadOperatorApprovedVouchers()">🖨️ 4. स्वीकृत वाउचर (पूर्ण PDF एवं शेयर)</button></li>
+</ul>
+<div class="tab-content">
+<div class="tab-pane fade show active" id="tabOp1">
+<div class="row">
+<div class="col-md-7">
+<div class="excel-box">
+<div class="d-flex justify-content-between align-items-center mb-2">
+<h6 class="fw-bold text-success m-0">📊 एक्सेल शीट द्वारा बल्क डेटा एंट्री:</h6>
+<button class="btn btn-sm btn-outline-success fw-bold" onclick="downloadSampleExcelTemplate()">📥 सैंपल एक्सेल डाउनलोड करें</button>
+</div>
+<p class="text-muted small mb-2">सैंपल एक्सेल में डेटा भरकर यहाँ अपलोड करें। सिस्टम स्वतः सभी फील्ड्स, मोबाइल, डुप्लीकेट खाता एवं IFSC जाँचेगा।</p>
+<div class="input-group">
+<input type="file" class="form-control form-control-sm" id="excelFileInput" accept=".xlsx, .xls">
+<button class="btn btn-success btn-sm fw-bold" id="btnUploadExcel" onclick="handleExcelBulkUpload()">📤 एक्सेल अपलोड व जांचें</button>
+</div>
+<div id="excelValidationReport" class="mt-2" style="display:none;"></div>
+</div>
+
+<div class="card p-3">
+<h5 class="fw-bold text-primary mb-3">नवीन एकल श्रमिक प्रविष्टि / सुधार फॉर्म</h5>
+<form id="opLabourForm" onsubmit="submitLabourByOp(event)">
+<input type="hidden" id="opEditRow" value="">
+<input type="hidden" id="opExistingProof" value="">
+<div class="row g-2">
+<div class="col-md-6"><label class="form-label fw-bold">वेंडर नंबर</label><input type="text" class="form-control" id="opLVendorNo" placeholder="उदा. V0522000291828265"></div>
+<div class="col-md-6"><label class="form-label fw-bold">श्रमिक का नाम *</label><input type="text" class="form-control" id="opLName" required></div>
+<div class="col-md-6"><label class="form-label fw-bold">पिता / पति का नाम *</label><input type="text" class="form-control" id="opLFather" required></div>
+<div class="col-md-6"><label class="form-label">पहचान संदर्भ *</label><input type="text" class="form-control" id="opLIdProof" placeholder="पहचान पत्र संदर्भ क्रमांक" required></div>
+<div class="col-md-6"><label class="form-label">मोबाइल नंबर</label><input type="tel" class="form-control" id="opLMobile" pattern="[0-9]{10}"></div>
+<div class="col-md-6"><label class="form-label fw-bold">बैंक खाता क्रमांक *</label><input type="text" class="form-control" id="opLAcc1" required></div>
+<div class="col-md-6"><label class="form-label fw-bold">खाता क्रमांक पुनः दर्ज करें *</label><input type="text" class="form-control" id="opLAcc2" required></div>
+<div class="col-md-6"><label class="form-label fw-bold">IFSC कोड *</label><input type="text" class="form-control text-uppercase" id="opLIfsc" maxlength="11" required></div>
+
+<div class="col-md-12">
+<label class="form-label fw-bold">बैंक प्रूफ (पासबुक/चेक फोटो) </label>
+<div class="input-group">
+<input type="file" class="form-control" id="opLFile" accept="image/,.pdf">
+<button type="button" class="btn btn-outline-primary fw-bold" id="btnCheckOCR" onclick="checkDocDetailsWithAI()">🔍 चेक डिटेल (AI OCR)</button>
+</div>
+</div>
+</div>
+
+<div id="ocrResultBox" class="ocr-display-box" style="display:none;">
+<div class="d-flex justify-content-between align-items-center mb-2">
+<h6 class="fw-bold text-primary m-0">📄 अटैच डॉक्यूमेंट से प्राप्त विवरण (AI OCR Scan):</h6>
+<span class="badge bg-secondary" id="ocrStatusBadge">सूचनात्मक</span>
+</div>
+<div class="row g-2 text-dark" style="font-size: 9pt;">
+<div class="col-md-6"><strong>• खाताधारक का नाम:</strong> <span id="ocrNameVal" class="text-dark fw-bold">--</span></div>
+<div class="col-md-6"><strong>• खाता संख्या:</strong> <span id="ocrAccVal" class="badge bg-light text-dark border fs-6">--</span></div>
+<div class="col-md-6"><strong>• IFSC कोड:</strong> <span id="ocrIfscVal" class="badge bg-light text-dark border">--</span></div>
+<div class="col-md-6"><strong>• बैंक एवं शाखा:</strong> <span id="ocrBankVal" class="text-dark">--</span></div>
+</div>
+</div>
+
+<button type="submit" class="btn btn-primary mt-3" id="btnSaveLabour">📤 एडमिन अनुमोदन हेतु सबमिट करें</button>
+<button type="button" class="btn btn-secondary mt-3 ms-2" onclick="resetLabourForm()">रद्द करें</button>
+</form>
+</div>
+</div>
+
+<div class="col-md-5">
+<div class="card p-3">
+<h5 class="fw-bold text-danger">⚠️ रिजेक्टेड / अनब्लॉक रिकॉर्ड्स (सुधार हेतु)</h5>
+<div id="opRejectedList" class="p-2 text-muted" style="max-height: 400px; overflow-y:auto;">लोड हो रहा है...</div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- 2. स्वीकृत श्रमिक खोजें एवं संशोधन अनुरोध -->
+<div class="tab-pane fade" id="tabOpEdit">
+<div class="card p-3">
+<h5 class="fw-bold text-primary mb-3">🔍 स्वीकृत श्रमिक खोजें एवं सुधार हेतु अनुरोध भेजें</h5>
+<div class="row g-2 mb-3">
+<div class="col-md-8">
+<input type="text" class="form-control" id="labourSearchInput" placeholder="नाम दर्ज करें / खाते के अंतिम 4 अंक / मोबाइल के अंतिम 5 अंक...">
+</div>
+<div class="col-md-4">
+<button class="btn btn-primary w-100 fw-bold" onclick="performLabourSearch()">🔎 खोजें (Search)</button>
+</div>
+</div>
+<div class="table-responsive">
+<table class="table table-bordered table-hover align-middle" id="labourSearchResultsTable">
+<thead class="table-light"><tr><th>ID</th><th>वेंडर नं</th><th>श्रमिक का नाम</th><th>पिता का नाम</th><th>खाता संख्या</th><th>IFSC</th><th>मोबाइल</th><th>स्थिति</th><th>कार्रवाई</th></tr></thead>
+<tbody><tr><td colspan="9" class="text-center text-muted p-3">कृपया नाम, खाते के अंतिम 4 अंक या मोबाइल दर्ज कर खोजें।</td></tr></tbody>
+</table>
+</div>
+</div>
+</div>
+
+<!-- 3. वाउचर तैयार करें -->
+<div class="tab-pane fade" id="tabOp2">
+<div class="card p-3">
+<div class="d-flex justify-content-between align-items-center mb-2">
+<h5 class="fw-bold text-success m-0">सामूहिक भुगतान वाउचर तैयार करें</h5>
+<div class="d-flex align-items-center">
+<label class="me-2 fw-bold text-primary">वाउचर प्रकार:</label>
+<select class="form-select form-select-sm fw-bold border-primary" id="vTypeSelector" onchange="toggleVoucherTypeFields()" style="width: 250px;">
+<option value="WORK">1. सामान्य कार्य वाउचर (Work Voucher)</option>
+<option value="SURAKSHA">2. सुरक्षा कार्य वाउचर (Suraksha Voucher)</option>
+</select>
+</div>
+</div>
+
+<div class="bg-light p-3 rounded border mb-3">
+<div class="row g-2">
+<div class="col-md-8">
+<label class="form-label fw-bold">कार्य का विवरण (Head of Service) *</label>
+<input type="text" class="form-control" id="vWorkDesc" placeholder="उदा. चार इमली बी 1 बी 13 पोल फिक्सिंग कार्य / वृक्षारोपण सुरक्षा कार्य" required>
+</div>
+<div class="col-md-4">
+<label class="form-label fw-bold">स्वीकृति क्रं./लेखा संदर्भ</label>
+<input type="text" class="form-control" id="vSanctionRef" placeholder="उदा. स्वीकृत प्राक्कलन अनुसार">
+</div>
+<div class="col-md-3">
+<label class="form-label fw-bold">प्रारंभ दिनांक *</label>
+<input type="date" class="form-control" id="vFromDate" onchange="calculateVoucherDays()" required>
+</div>
+<div class="col-md-3">
+<label class="form-label fw-bold">समाप्ति दिनांक *</label>
+<input type="date" class="form-control" id="vToDate" onchange="calculateVoucherDays()" required>
+</div>
+<div class="col-md-3">
+<label class="form-label fw-bold text-primary">समान दैनिक दर (₹/दिन) *</label>
+<input type="number" class="form-control fw-bold border-primary" id="vUniformRate" value="478" oninput="calcVoucherTotal()" required>
+</div>
+<div class="col-md-3">
+<label class="form-label fw-bold">कुल कार्य दिवस</label>
+<div class="p-2 bg-white rounded border text-center fw-bold text-primary" id="vAutoDays">0 दिन</div>
+</div>
+</div>
+
+<div class="form-section-title">वित्तीय लेखा विवरण (Financial Accounting)</div>
+<div class="row g-2">
+<div class="col-md-3"><label class="form-label">स्वीकृत राशि (₹)</label><input type="number" class="form-control form-control-sm" id="vSanctionedAmt" value="298200" oninput="calcVoucherTotal()"></div>
+<div class="col-md-3"><label class="form-label">पूर्व में व्यय राशि (₹)</label><input type="number" class="form-control form-control-sm" id="vPreviousExp" value="99400" oninput="calcVoucherTotal()"></div>
+<div class="col-md-3"><label class="form-label">वर्तमान देयक राशि (₹)</label><input type="number" class="form-control form-control-sm fw-bold text-primary" id="vCurrentBill" readonly></div>
+<div class="col-md-3"><label class="form-label">शेष राशि (₹)</label><input type="number" class="form-control form-control-sm fw-bold text-success" id="vRemainingAmt" readonly></div>
+</div>
+
+<div id="workVoucherQtyDiv">
+<div class="form-section-title">मात्रा एवं दर विवरण (Work Quantities)</div>
+<div class="row g-2">
+<div class="col-md-3"><label class="form-label">पूर्व की मात्रा</label><input type="text" class="form-control form-control-sm" id="vQtyPrev" value="12.2"></div>
+<div class="col-md-3"><label class="form-label">वर्तमान मात्रा</label><input type="text" class="form-control form-control-sm" id="vQtyCurr" value="17.80"></div>
+<div class="col-md-3"><label class="form-label">कुल मात्रा</label><input type="text" class="form-control form-control-sm fw-bold" id="vQtyTotal" value="30.0"></div>
+<div class="col-md-3"><label class="form-label">मात्रा इकाई</label><input type="text" class="form-control form-control-sm" id="vQtyUnit" value="घ.मी."></div>
+</div>
+</div>
+
+<div class="form-section-title">माप प्रभारी अधिकारी प्रमाणन विवरण</div>
+<div class="row g-2">
+<div class="col-md-6"><label class="form-label">माप प्रभारी का नाम *</label><input type="text" class="form-control form-control-sm" id="vInchargeName" value="Vinod Jatav" required></div>
+<div class="col-md-6"><label class="form-label">प्रभारी का पद (Rank) *</label><input type="text" class="form-control form-control-sm" id="vInchargeRank" value="Forest Guard" required></div>
+</div>
+</div>
+
+<div class="table-responsive" style="max-height: 300px;">
+<table class="table table-bordered table-hover align-middle" id="opLabourSelectTable">
+<thead class="table-light sticky-top"><tr><th>चुनें</th><th>श्रमिक ID</th><th>वेंडर नं</th><th>श्रमिक का नाम</th><th>पिता का नाम</th><th>खाता संख्या</th><th>IFSC</th><th>कार्य दिवस</th><th>लागू दर</th><th>कुल देय</th></tr></thead>
+<tbody></tbody>
+</table>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mt-3 bg-white p-3 rounded border">
+<div>
+<h5 class="m-0">चयनित श्रमिक: <span class="text-primary fw-bold" id="vSelectedCount">0</span></h5>
+<h4 class="m-0 text-success fw-bold">कुल वाउचर राशि: <span id="vGrandTotalText">₹0</span></h4>
+</div>
+<button class="btn btn-success btn-lg fw-bold" onclick="submitVoucherWithOverlapCheck()">📤 अप्रूवल हेतु भेजें (ओवरलैप जाँच सहित)</button>
+</div>
+</div>
+</div>
+
+<!-- 4. स्वीकृत वाउचर सूची -->
+<div class="tab-pane fade" id="tabOp3">
+<div class="card p-3">
+<div class="d-flex justify-content-between align-items-center mb-2">
+<h5 class="fw-bold text-info m-0">🖨️ स्वीकृत वाउचर सूची (पूर्ण कंबाइंड PDF एवं हेड ऑफिस शेयर)</h5>
+<button class="btn btn-sm btn-outline-info" onclick="loadOperatorApprovedVouchers()">🔄 रीफ्रेश करें</button>
+</div>
+<div class="table-responsive">
+<table class="table table-striped align-middle" id="opApprovedVoucherTable">
+<thead class="table-light"><tr><th>वाउचर नं</th><th>कार्य विवरण</th><th>अवधि</th><th>श्रमिक</th><th>कुल राशि</th><th>पूर्ण संलग्न PDF</th><th>हेड ऑफिस डैशबोर्ड</th></tr></thead>
+<tbody></tbody>
+</table>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- ================= LEVEL 4: HEAD OFFICE ================= -->
+<div id="viewHeadOffice" style="display:none;">
+<div class="card p-3">
+<div class="d-flex justify-content-between align-items-center mb-3">
+<div>
+<h5 class="fw-bold text-primary m-0">🏛️ सभी परिक्षेत्रों के स्वीकृत वाउचर (Upload Portal Data)</h5>
+<small class="text-success fw-bold">🔒 समस्त निर्यात स्प्रेडशीट एवं फाइलें रीड-ओनली (Locked) रूप से सुरक्षित हैं।</small>
+</div>
+<button class="btn btn-sm btn-outline-primary" onclick="loadHeadOfficeData()">🔄 रीफ्रेश करें</button>
+</div>
+<div class="table-responsive">
+<table class="table table-bordered table-hover align-middle" id="hoTable">
+<thead class="table-dark"><tr><th>वाउचर नं</th><th>परिक्षेत्र</th><th>कार्य विवरण</th><th>श्रमिक</th><th>कुल राशि</th><th>अवधि</th><th>लॉक्ड शीट</th><th>PDF</th><th>डाउनलोड</th></tr></thead>
+<tbody></tbody>
+</table>
+</div>
+</div>
+</div>
+</div>
+
+<!-- वाउचर विवरण मोडल -->
+<div class="modal fade" id="voucherDetailsModal" tabindex="-1" aria-hidden="true">
+<div class="modal-dialog modal-lg modal-dialog-scrollable">
+<div class="modal-content">
+<div class="modal-header bg-primary text-white">
+<h5 class="modal-title" id="vModalTitle">वाउचर का संपूर्ण विवरण</h5>
+<button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+</div>
+<div class="modal-body" id="vModalBody">लोड हो रहा है...</div>
+<div class="modal-footer">
+<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">बंद करें</button>
+</div>
+</div>
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+let currentUser = null;
+let approvedLabourersList = [];
+let pendingAdminVouchersList = [];
+
+// Google Apps Script Web App URL (GitHub Pages के लिए सीधे API कॉल हेतु)
+// नोट: यदि आप सीधे Google Apps Script लिंक से चला रहे हैं तो यह स्वतः हैंडल हो जाएगा
+const SCRIPT_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz_placeholder/exec";
+
+function toggleVoucherTypeFields() {
+const type = document.getElementById('vTypeSelector').value;
+document.getElementById('workVoucherQtyDiv').style.display = (type === "SURAKSHA") ? "none" : "block";
+}
+
+// परिक्षेत्र ड्रॉपडाउन नियंत्रण (तत्काल डिस्प्ले)
+function toggleRangeDropdown() {
+const role = document.getElementById('loginRole').value;
+const rangeDiv = document.getElementById('rangeSelectDiv');
+const rangeSel = document.getElementById('loginRange');
+
+if (role === 'OPERATOR' || role === 'RANGE_ADMIN') {
+rangeDiv.style.display = 'block';
+rangeSel.setAttribute('required', 'required');
+} else {
+rangeDiv.style.display = 'none';
+rangeSel.removeAttribute('required');
+}
+}
+
+window.onload = function() {
+toggleVoucherTypeFields();
+toggleRangeDropdown();
+
+// 1. यदि Apps Script परिवेश में चल रहा है
+if (typeof google !== "undefined" && google.script && google.script.run) {
+google.script.run.withSuccessHandler(populateRangeDropdown).getActiveRangesList();
+} else {
+// 2. यदि GitHub Pages पर चल रहा है (Fetch API Fallback)
+fetch(SCRIPT_WEB_APP_URL + "?action=getActiveRanges")
+.then(res => res.json())
+.then(data => populateRangeDropdown(data))
+.catch(err => {
+// डिफ़ॉल्ट परिक्षेत्र सूची (ऑफ़लाइन/कैश बैकअप)
+populateRangeDropdown(["Unit-1", "Bhopal", "Shivpuri"]);
+});
+}
+};
+
+function populateRangeDropdown(ranges) {
+const sel = document.getElementById('loginRange');
+sel.innerHTML = '<option value="">-- परिक्षेत्र चुनें --</option>';
+if (ranges && ranges.length) {
+ranges.forEach(r => {
+sel.innerHTML += '<option value="' + r + '">' + r + '</option>';
+});
+} else {
+// यदि बैकएंड से खाली आए तो भी मुख्य यूनिट्स जोड़ें
+sel.innerHTML += '<option value="Unit-1">Unit-1</option>';
+}
+}
+
+function handleLogin(e) {
+e.preventDefault();
+const role = document.getElementById('loginRole').value;
+const range = document.getElementById('loginRange').value;
+const pin = document.getElementById('loginPin').value;
+
+const btn = document.getElementById('btnLogin');
+btn.innerText = "सत्यापन हो रहा है...";
+btn.disabled = true;
+
+const processAuthSuccess = function(res) {
+btn.innerText = "🔓 डैशबोर्ड में प्रवेश करें";
+btn.disabled = false;
+if (res.success) {
+currentUser = res;
+document.getElementById('loginScreen').style.display = 'none';
+document.getElementById('appScreen').style.display = 'block';
+document.getElementById('userBadgeInfo').innerHTML = 'उपयोगकर्ता: <strong>' + res.name + '</strong> | रोल: <strong>' + res.role + '</strong> | परिक्षेत्र: <strong>' + res.range + '</strong>';
+
+document.getElementById('viewMasterAdmin').style.display = 'none';
+document.getElementById('viewRangeAdmin').style.display = 'none';
+document.getElementById('viewOperator').style.display = 'none';
+document.getElementById('viewHeadOffice').style.display = 'none';
+
+if (res.role === 'MASTER_ADMIN') {
+document.getElementById('viewMasterAdmin').style.display = 'block';
+loadMasterUsers();
+} else if (res.role === 'RANGE_ADMIN') {
+document.getElementById('viewRangeAdmin').style.display = 'block';
+loadAdminMaster();
+loadAdminVouchers();
+} else if (res.role === 'OPERATOR') {
+document.getElementById('viewOperator').style.display = 'block';
+loadOperatorRejected();
+initOperatorVoucherTab();
+loadOperatorApprovedVouchers();
+} else if (res.role === 'HEAD_OFFICE') {
+document.getElementById('viewHeadOffice').style.display = 'block';
+loadHeadOfficeData();
+}
+} else {
+alert(res.message);
+}
+};
+
+if (typeof google !== "undefined" && google.script && google.script.run) {
+google.script.run
+.withSuccessHandler(processAuthSuccess)
+.withFailureHandler(function(err){
+btn.innerText = "🔓 डैशबोर्ड में प्रवेश करें";
+btn.disabled = false;
+alert("सर्वर त्रुटि: " + err.message);
+})
+.authenticateUser(range, role, pin);
+} else {
+// GitHub Pages API Fallback
+fetch(SCRIPT_WEB_APP_URL + ?action=auth&range=${encodeURIComponent(range)}&role=${encodeURIComponent(role)}&pin=${encodeURIComponent(pin)}`)
+.then(res => res.json())
+.then(data => processAuthSuccess(data))
+.catch(err => {
+btn.innerText = "🔓 डैशबोर्ड में प्रवेश करें";
+btn.disabled = false;
+alert("नेटवर्क त्रुटि: कृपया इंटरनेट या वेब ऐप URL जांचें।");
+});
+}
+}
+
+function handleLogout() {
+currentUser = null;
+document.getElementById('loginPin').value = "";
+['viewMasterAdmin', 'viewRangeAdmin', 'viewOperator', 'viewHeadOffice'].forEach(id => {
+document.getElementById(id).style.display = 'none';
+});
+document.getElementById('appScreen').style.display = 'none';
+document.getElementById('loginScreen').style.display = 'block';
+toggleRangeDropdown();
+}
+
+function promptChangeMyPIN() {
+const oldP = prompt("वर्तमान पिन दर्ज करें:");
+if (!oldP) return;
+const newP = prompt("नया 4-अंकों का पिन दर्ज करें:");
+if (!newP) return;
+google.script.run.withSuccessHandler(alert).updateUserPIN(currentUser.userId, oldP, newP);
+}
+
+// ----------------- MASTER ADMIN -----------------
+function loadMasterUsers() {
+google.script.run.withSuccessHandler(function(users){
+let h = "";
+users.forEach(u => {
+h += '<tr><td>' + u.id + '</td><td>' + u.name + '</td><td>' + u.role + '</td><td>' + u.range + '</td><td><code>' + u.pin + '</code></td><td><button class="btn btn-sm btn-outline-danger" onclick="resetUserPinMaster('' + u.id + '')">Reset PIN</button></td></tr>';
+});
+document.querySelector('#masterUserTable tbody').innerHTML = h;
+}).getAllUsersForMaster();
+}
+
+function submitNewRange(e) {
+e.preventDefault();
+google.script.run.withSuccessHandler(function(res){
+alert(res.message);
+if (res.success) {
+document.getElementById('mRangeName').value = "";
+document.getElementById('mAdminName').value = "";
+document.getElementById('mOpName').value = "";
+loadMasterUsers();
+}
+}).createNewRangeAndUsers(
+document.getElementById('mRangeName').value.trim(),
+document.getElementById('mAdminName').value.trim(),
+document.getElementById('mAdminPin').value.trim(),
+document.getElementById('mOpName').value.trim(),
+document.getElementById('mOpPin').value.trim()
+);
+}
+
+function resetUserPinMaster(uid) {
+const p = prompt("User " + uid + " हेतु नया पिन दर्ज करें:");
+if (p) google.script.run.withSuccessHandler(function(res){ alert(res.message); loadMasterUsers(); }).masterResetPIN(uid, p);
+}
+
+// ----------------- EXCEL & AI OCR -----------------
+function downloadSampleExcelTemplate() {
+const sampleData = [{
+"Vendor_Number": "V0522000291828265",
+"Labour_Name": "Anand Solanki",
+"Father_Name": "Jawahar Singh",
+"ID_Proof_Ref": "ID-76210514",
+"Mobile_10_Digits": "9876543210",
+"Bank_Account_Number": "709402010002292",
+"Confirm_Account_Number": "709402010002292",
+"IFSC_Code": "UBIN0570940"
+}];
+const ws = XLSX.utils.json_to_sheet(sampleData);
+const wb = XLSX.utils.book_new();
+XLSX.utils.book_append_sheet(wb, ws, "Labour_Master");
+XLSX.writeFile(wb, "Forest_Labour_Master_Sample.xlsx");
+}
+
+function handleExcelBulkUpload() {
+const fileInput = document.getElementById('excelFileInput');
+const file = fileInput.files[0];
+if (!file) { alert("कृपया एक्सेल फ़ाइल चुनें!"); return; }
+
+const reader = new FileReader();
+reader.onload = function(e) {
+try {
+const data = new Uint8Array(e.target.result);
+const workbook = XLSX.read(data, { type: 'array' });
+const rawRows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+const validatedRows = [];
+
+rawRows.forEach((row) => {
+const acc1 = String(row["Bank_Account_Number"] || "").trim().replace(/\D/g, '');
+const acc2 = String(row["Confirm_Account_Number"] || acc1).trim().replace(/\D/g, '');
+if (acc1 && acc1 === acc2) {
+validatedRows.push({
+vendorNo: String(row["Vendor_Number"] || "").trim(),
+name: String(row["Labour_Name"] || "").trim(),
+father: String(row["Father_Name"] || "").trim(),
+idProof: String(row["ID_Proof_Ref"] || "").trim(),
+mobile: String(row["Mobile_10_Digits"] || "").trim().replace(/\D/g, ''),
+acc: acc1,
+ifsc: String(row["IFSC_Code"] || "").trim().toUpperCase()
+});
+}
+});
+
+google.script.run.withSuccessHandler(function(res){
+document.getElementById('excelValidationReport').style.display = 'block';
+document.getElementById('excelValidationReport').innerHTML = <div class="alert alert-success"&gt;${res.importedCount} रिकॉर्ड्स सफलतापूर्वक मास्टर में जुड़ गए।</div>`;
+fileInput.value = "";
+loadAdminMaster();
+}).processBulkLabourExcelImport(currentUser.range, validatedRows);
+} catch(err) { alert("एक्सेल त्रुटि: " + err.message); }
+};
+reader.readAsArrayBuffer(file);
+}
+
+function checkDocDetailsWithAI() {
+const file = document.getElementById('opLFile').files[0];
+if (!file) { alert("कृपया पासबुक/चेक फोटो चुनें!"); return; }
+const btn = document.getElementById('btnCheckOCR');
+btn.innerText = "⏳ AI स्कैन...";
+btn.disabled = true;
+
+const reader = new FileReader();
+reader.onload = function(evt) {
+google.script.run.withSuccessHandler(function(res){
+btn.innerText = "🔍 चेक डिटेल (AI OCR)";
+btn.disabled = false;
+document.getElementById('ocrResultBox').style.display = 'block';
+if (res.success && res.data) {
+document.getElementById('ocrNameVal').innerText = res.data.accountHolderName;
+document.getElementById('ocrAccVal').innerText = res.data.accountNumber;
+document.getElementById('ocrIfscVal').innerText = res.data.ifsc;
+document.getElementById('ocrBankVal').innerText = res.data.bankBranch;
+}
+}).parseBankProofDetailsWithAI(evt.target.result, file.type);
+};
+reader.readAsDataURL(file);
+}
+
+function submitLabourByOp(e) {
+e.preventDefault();
+const a1 = document.getElementById('opLAcc1').value.trim();
+const a2 = document.getElementById('opLAcc2').value.trim();
+if (a1 !== a2) { alert("बैंक खाता क्रमांक दोनों बॉक्स में समान होना चाहिए!"); return; }
+
+const file = document.getElementById('opLFile').files[0];
+const sendData = function(b64, fName, fType) {
+const payload = {
+range: currentUser.range,
+rowToUpdate: document.getElementById('opEditRow').value,
+existingProofUrl: document.getElementById('opExistingProof').value,
+vendorNo: document.getElementById('opLVendorNo').value.trim(),
+name: document.getElementById('opLName').value.trim(),
+father: document.getElementById('opLFather').value.trim(),
+idProof: document.getElementById('opLIdProof').value.trim(),
+mobile: document.getElementById('opLMobile').value.trim(),
+acc: a1,
+ifsc: document.getElementById('opLIfsc').value.trim().toUpperCase(),
+fileBase64: b64, fileName: fName, fileType: fType
+};
+google.script.run.withSuccessHandler(function(res){
+alert(res.message);
+if (res.success) {
+resetLabourForm();
+loadOperatorRejected();
+}
+}).saveLabourMasterEntryFinal(payload);
+};
+
+if (file) {
+const reader = new FileReader();
+reader.onload = function(evt) { sendData(evt.target.result, file.name, file.type); };
+reader.readAsDataURL(file);
+} else {
+sendData(null, null, null);
+}
+}
+
+function resetLabourForm() {
+document.getElementById('opLabourForm').reset();
+document.getElementById('opEditRow').value = "";
+document.getElementById('opExistingProof').value = "";
+document.getElementById('ocrResultBox').style.display = 'none';
+}
+
+function loadOperatorRejected() {
+google.script.run.withSuccessHandler(function(list){
+let h = "";
+if (!list || list.length === 0) h = "<div class='text-success p-2'>कोई रिजेक्टेड या अनब्लॉक रिकॉर्ड नहीं है।</div>";
+else {
+list.forEach(item => {
+const tag = item.status === "EDIT_APPROVED" ? '<span class="badge bg-warning text-dark">सुधार हेतु स्वीकृत</span>' : '<span class="badge bg-danger">Rejected</span>';
+h += '<div class="border rounded p-2 mb-2 bg-light d-flex justify-content-between align-items-center"><div><strong>' + item.name + '</strong> ' + tag + '<br><small class="text-danger">कारण: ' + item.reason + '</small></div><button class="btn btn-sm btn-primary" onclick='editLabourInForm(' + JSON.stringify(item) + ')'>संशोधन करें</button></div>';
+});
+}
+document.getElementById('opRejectedList').innerHTML = h;
+}).getRejectedLabourersForRange(currentUser.range);
+}
+
+function editLabourInForm(item) {
+document.getElementById('opEditRow').value = item.row;
+document.getElementById('opExistingProof').value = item.proofUrl || "";
+document.getElementById('opLVendorNo').value = item.vendorNo !== '-' ? item.vendorNo : "";
+document.getElementById('opLName').value = item.name;
+document.getElementById('opLFather').value = item.father;
+document.getElementById('opLIdProof').value = item.idProof !== '-' ? item.idProof : "";
+document.getElementById('opLMobile').value = item.mobile !== '-' ? item.mobile : "";
+document.getElementById('opLAcc1').value = item.acc;
+document.getElementById('opLAcc2').value = item.acc;
+document.getElementById('opLIfsc').value = item.ifsc;
+
+bootstrap.Tab.getInstance(document.querySelector('button[data-bs-target="#tabOp1"]')).show();
+}
+
+// ----------------- श्रमिक खोजें व अनलॉक अनुरोध -----------------
+function performLabourSearch() {
+const q = document.getElementById('labourSearchInput').value.trim();
+if (!q) { alert("कृपया खोज हेतु नाम, खाते के अंतिम 4 अंक या मोबाइल दर्ज करें!"); return; }
+
+document.querySelector('#labourSearchResultsTable tbody').innerHTML = '<tr><td colspan="9" class="text-center text-primary p-3">खोज जारी है...</td></tr>';
+google.script.run.withSuccessHandler(function(results){
+let h = "";
+if (!results || results.length === 0) {
+h = '<tr><td colspan="9" class="text-center text-danger p-3">कोई श्रमिक रिकॉर्ड नहीं मिला।</td></tr>';
+} else {
+results.forEach(l => {
+let btn = '';
+if (l.status === 'APPROVED') {
+btn = <button class="btn btn-sm btn-outline-warning fw-bold" onclick="sendEditRequest(${l.row}, '${l.name}')"&gt;अनब्लॉक अनुरोध भेजें&lt;/button>;
+} else if (l.status === 'EDIT_REQUESTED') {
+btn = <span class="badge bg-warning text-dark"&gt;अनुरोध लंबित&lt;/span>;
+} else if (l.status === 'EDIT_APPROVED') {
+btn = <button class="btn btn-sm btn-success fw-bold" onclick='editLabourInForm(${JSON.stringify(l)})'>अब सुधारें</button>; } else { btn =<span class="badge bg-secondary">${l.status}&lt;/span>;
+}
+
+h += <tr&gt; &lt;td class="fw-bold"&gt;${l.id}</td>
+<td>${l.vendorNo}&lt;/td&gt; &lt;td class="fw-bold text-primary"&gt;${l.name}</td>
+<td>${l.father}&lt;/td&gt; &lt;td&gt;${l.acc}</td>
+<td>${l.ifsc}&lt;/td&gt; &lt;td&gt;${l.mobile}</td>
+<td><span class="badge bg-info">${l.status}&lt;/span&gt;&lt;/td&gt; &lt;td&gt;${btn}</td>
+</tr>`;
+});
+}
+document.querySelector('#labourSearchResultsTable tbody').innerHTML = h;
+}).searchLabourersForEdit(currentUser.range, q);
+}
+
+function sendEditRequest(rowNum, name) {
+const reason = prompt(श्रमिक "${name}" के डेटा में सुधार का कारण लिखें:`);
+if (!reason) return;
+google.script.run.withSuccessHandler(function(res){
+alert(res.message);
+performLabourSearch();
+}).requestLabourEditUnlock(rowNum, reason);
+}
+
+// ----------------- VOUCHER ENGINE -----------------
+function calculateVoucherDays() {
+const f = document.getElementById('vFromDate').value;
+const t = document.getElementById('vToDate').value;
+if (f && t) {
+const diff = Math.floor((new Date(t) - new Date(f)) / (1000 * 60 * 60 * 24)) + 1;
+document.getElementById('vAutoDays').innerText = (diff > 0 ? diff : 0) + " दिन";
+}
+calcVoucherTotal();
+}
+
+function initOperatorVoucherTab() {
+google.script.run.withSuccessHandler(function(list){
+approvedLabourersList = list || [];
+renderLabourSelectTable(approvedLabourersList);
+}).getApprovedLabourersForRange(currentUser.range);
+}
+
+function renderLabourSelectTable(list) {
+let tbody = "";
+const uRate = Number(document.getElementById('vUniformRate').value) || 0;
+const days = parseInt(document.getElementById('vAutoDays').innerText, 10) || 0;
+
+if (!list || list.length === 0) {
+document.querySelector('#opLabourSelectTable tbody').innerHTML = '<tr><td colspan="10" class="text-center text-warning p-3">कोई स्वीकृत श्रमिक उपलब्ध नहीं है।</td></tr>';
+return;
+}
+
+list.forEach((l, idx) => {
+tbody += '<tr>' +
+'<td><input type="checkbox" class="form-check-input l-check" data-idx="' + idx + '" onchange="calcVoucherTotal()"></td>' +
+'<td class="fw-bold">' + l.id + '</td>' +
+'<td>' + (l.vendorNo || '-') + '</td>' +
+'<td class="fw-bold">' + l.name + '</td>' +
+'<td>' + l.father + '</td>' +
+'<td>' + l.acc + '</td>' +
+'<td>' + l.ifsc + '</td>' +
+'<td class="text-center l-days">' + days + '</td>' +
+'<td class="text-end l-rate">₹' + uRate + '</td>' +
+'<td class="fw-bold text-end l-tot">₹0</td>' +
+'</tr>';
+});
+document.querySelector('#opLabourSelectTable tbody').innerHTML = tbody;
+calcVoucherTotal();
+}
+
+function calcVoucherTotal() {
+const days = parseInt(document.getElementById('vAutoDays').innerText, 10) || 0;
+const uRate = Number(document.getElementById('vUniformRate').value) || 0;
+let grand = 0;
+let selectedCount = 0;
+
+document.querySelectorAll('#opLabourSelectTable tbody tr').forEach(r => {
+const chk = r.querySelector('.l-check');
+const dCell = r.querySelector('.l-days');
+const rCell = r.querySelector('.l-rate');
+const totCell = r.querySelector('.l-tot');
+
+if (dCell) dCell.innerText = days;
+if (rCell) rCell.innerText = "₹" + uRate;
+
+if (chk && chk.checked) {
+selectedCount++;
+const tot = days * uRate;
+if (totCell) totCell.innerText = "₹" + tot;
+grand += tot;
+} else if (chk && totCell) {
+totCell.innerText = "₹0";
+}
+});
+
+document.getElementById('vSelectedCount').innerText = selectedCount;
+document.getElementById('vGrandTotalText').innerText = "₹" + grand;
+
+const sanctioned = parseFloat(document.getElementById('vSanctionedAmt').value) || 0;
+const previous = parseFloat(document.getElementById('vPreviousExp').value) || 0;
+document.getElementById('vCurrentBill').value = grand;
+document.getElementById('vRemainingAmt').value = (sanctioned - (previous + grand)).toFixed(2);
+}
+
+function submitVoucherWithOverlapCheck() {
+const vType = document.getElementById('vTypeSelector').value;
+const work = document.getElementById('vWorkDesc').value.trim();
+const fDate = document.getElementById('vFromDate').value;
+const tDate = document.getElementById('vToDate').value;
+const days = parseInt(document.getElementById('vAutoDays').innerText, 10) || 0;
+const uRate = Number(document.getElementById('vUniformRate').value) || 0;
+
+if (!work || !fDate || !tDate || days <= 0 || uRate <= 0) {
+alert("कृपया कार्य विवरण, वैध अवधि एवं दर भरें!");
+return;
+}
+
+const items = [];
+document.querySelectorAll('#opLabourSelectTable tbody tr').forEach(r => {
+const chk = r.querySelector('.l-check');
+if (chk && chk.checked) {
+items.push(approvedLabourersList[chk.getAttribute('data-idx')]);
+}
+});
+
+if (items.length === 0) { alert("कम से कम एक श्रमिक चुनें!"); return; }
+
+const payload = {
+voucherType: vType,
+range: currentUser.range,
+user: currentUser.name,
+workDesc: work,
+sanctionRef: document.getElementById('vSanctionRef').value.trim(),
+fromDate: fDate,
+toDate: tDate,
+daysCount: days,
+uniformRate: uRate,
+totalAmount: parseFloat(document.getElementById('vCurrentBill').value) || 0,
+sanctionedAmt: document.getElementById('vSanctionedAmt').value,
+previousExp: document.getElementById('vPreviousExp').value,
+qtyPrev: document.getElementById('vQtyPrev').value,
+qtyCurr: document.getElementById('vQtyCurr').value,
+qtyTotal: document.getElementById('vQtyTotal').value,
+qtyUnit: document.getElementById('vQtyUnit').value,
+inchargeName: document.getElementById('vInchargeName').value.trim(),
+inchargeRank: document.getElementById('vInchargeRank').value.trim(),
+items: items
+};
+
+google.script.run.withSuccessHandler(function(res){
+alert(res.message);
+if (res.success) {
+document.getElementById('vWorkDesc').value = "";
+initOperatorVoucherTab();
+}
+}).createBulkVoucherWithOverlapCheck(payload);
+}
+
+function loadOperatorApprovedVouchers() {
+google.script.run.withSuccessHandler(function(list){
+let h = "";
+if (!list || list.length === 0) {
+h = '<tr><td colspan="7" class="text-center text-muted p-3">कोई स्वीकृत वाउचर उपलब्ध नहीं है।</td></tr>';
+} else {
+list.forEach(v => {
+const btn = v.isShared ? '<span class="badge bg-secondary">✅ Shared</span>' : '<button class="btn btn-sm btn-primary" onclick="pushToHO('' + v.voucherNo + '')">📤 Push to Head Office</button>';
+h += '<tr><td class="fw-bold text-primary">' + v.voucherNo + '</td><td>' + v.workDesc + '</td><td>' + v.dateRange + '</td><td>' + v.labourCount + '</td><td class="fw-bold text-success">₹' + v.totalAmount + '</td><td><a href="' + v.pdfUrl + '" target="_blank" class="btn btn-sm btn-outline-danger">📄 Complete PDF</a></td><td>' + btn + '</td></tr>';
+});
+}
+document.querySelector('#opApprovedVoucherTable tbody').innerHTML = h;
+}).getApprovedVouchersForOperatorPanel(currentUser.range);
+}
+
+function pushToHO(vNo) {
+google.script.run.withSuccessHandler(function(res){ alert(res.message); loadOperatorApprovedVouchers(); }).pushVoucherToHeadOffice(vNo);
+}
+
+// ----------------- RANGE ADMIN -----------------
+function loadAdminMaster() {
+google.script.run.withSuccessHandler(function(data){
+let reqHtml = "";
+if (!data.editRequests || data.editRequests.length === 0) {
+reqHtml = '<tr><td colspan="6" class="text-center text-muted p-2">कोई संशोधन अनुरोध लंबित नहीं है।</td></tr>';
+} else {
+data.editRequests.forEach(l => {
+reqHtml += <tr&gt; &lt;td class="fw-bold"&gt;${l.id}</td>
+<td>${l.name}&lt;/td&gt; &lt;td&gt;${l.acc}</td>
+<td>${l.ifsc}&lt;/td&gt; &lt;td class="text-danger"&gt;${l.remarks}</td>
+<td>
+<button class="btn btn-sm btn-success me-1" onclick="actLabour(${l.row}, 'ALLOW_EDIT')"&gt;संशोधन स्वीकृत (Unlock)&lt;/button&gt; &lt;button class="btn btn-sm btn-danger" onclick="actLabour(${l.row}, 'APPROVE')">अनुरोध निरस्त रखें</button>
+</td>
+</tr>`;
+});
+}
+document.querySelector('#adminEditRequestsTable tbody').innerHTML = reqHtml;
+
+let pHtml = "";
+data.pending.forEach(l => {
+const proof = l.proofUrl ? '<a href="' + l.proofUrl + '" target="_blank" class="btn btn-sm btn-outline-info">देखें</a>' : '-';
+pHtml += '<tr><td>' + l.id + '</td><td>' + (l.vendorNo || '-') + '</td><td>' + l.name + '</td><td>' + l.father + '</td><td>' + l.idProof + '</td><td>' + l.acc + '</td><td>' + l.ifsc + '</td><td>' + proof + '</td><td><button class="btn btn-sm btn-success me-1" onclick="actLabour(' + l.row + ','APPROVE')">Approve</button><button class="btn btn-sm btn-warning me-1" onclick="actLabour(' + l.row + ','REJECT')">Reject</button><button class="btn btn-sm btn-danger" onclick="actLabour(' + l.row + ','DELETE')">Delete</button></td></tr>';
+});
+document.querySelector('#adminPendingTable tbody').innerHTML = pHtml || '<tr><td colspan="9" class="text-center text-muted p-2">कोई पेंडिंग श्रमिक नहीं है।</td></tr>';
+
+let aHtml = "";
+data.approved.forEach(l => {
+aHtml += '<tr><td>' + l.id + '</td><td>' + (l.vendorNo || '-') + '</td><td>' + l.name + '</td><td>' + l.father + '</td><td>' + l.acc + '</td><td>' + l.ifsc + '</td><td class="text-success">' + l.remarks + '</td></tr>';
+});
+document.querySelector('#adminApprovedTable tbody').innerHTML = aHtml || '<tr><td colspan="7" class="text-center text-muted p-2">कोई स्वीकृत श्रमिक नहीं है।</td></tr>';
+}).getAdminPendingMaster(currentUser.range);
+}
+
+function actLabour(r, act) {
+let reason = "";
+if (act === 'REJECT') { reason = prompt("रिजेक्ट करने का कारण:"); if (!reason) return; }
+if (confirm("क्या आप यह कार्रवाई करना चाहते हैं?")) {
+google.script.run.withSuccessHandler(function(msg){ alert(msg); loadAdminMaster(); }).adminActionOnLabour(r, act, reason);
+}
+}
+
+function loadAdminVouchers() {
+google.script.run.withSuccessHandler(function(list){
+pendingAdminVouchersList = list || [];
+if (!list || list.length === 0) {
+document.getElementById('adminVoucherContainer').innerHTML = "<div class='alert alert-info'>कोई लंबित वाउचर नहीं है।</div>";
+return;
+}
+let h = "";
+list.forEach((v, vIdx) => {
+h += <div class="card border-primary mb-3"&gt; &lt;div class="card-header bg-light d-flex justify-content-between align-items-center"&gt; &lt;div&gt; &lt;strong&gt;${v.voucherNo}</strong> ({v.voucherType}</span>
+<br><small class="text-muted">अवधि: {v.toDate} | कुल राशि: <strong class="text-success">₹{vIdx})">🔍 पूर्ण विवरण देखें</button>
+<button class="btn btn-sm btn-success me-1" onclick="actVoucher('{v.voucherNo}','REJECT')">Reject</button>
+<button class="btn btn-sm btn-danger" onclick="actVoucher('${v.voucherNo}','DELETE')"&gt;Delete&lt;/button&gt; &lt;/div&gt; &lt;/div&gt; &lt;/div>;
+});
+document.getElementById('adminVoucherContainer').innerHTML = h;
+}).getAdminVouchers(currentUser.range);
+}
+
+function showVoucherFullDetailsModal(idx) {
+const v = pendingAdminVouchersList[idx];
+if (!v) return;
+
+document.getElementById('vModalTitle').innerText = वाउचर विवरण:${v.voucherNo} (latex
+{v.voucherType})`; let rows = ""; v.items.forEach((it, i) =&gt; { rows += `<tr&gt; &lt;td&gt;
+
+{i+1}</td>
+<td>{it.vendorNo || '-'}</td>
+<td>{it.acc}</td>
+<td>{it.days}</td>
+<td>₹{it.total}</td>
+</tr>`;
+});
+
+let qtyBlock = "";
+if (v.voucherType === "WORK") {
+qtyBlock = <div class="p-2 mb-2 bg-light rounded border"&gt; &lt;strong&gt;मात्रा विवरण:&lt;/strong&gt; पूर्व मात्रा: ${v.qtyPrev || '-'} ${v.qtyUnit || ''} | वर्तमान मात्रा: ${v.qtyCurr || '-'} ${v.qtyUnit || ''} | कुल मात्रा: &lt;strong&gt;${v.qtyTotal || '-'} ${v.qtyUnit || ''}&lt;/strong&gt; &lt;/div>;
+}
+
+document.getElementById('vModalBody').innerHTML = &lt;div class="mb-2"&gt;&lt;strong&gt;कार्य विवरण:&lt;/strong&gt; ${v.workDesc}</div>
+<div class="mb-2"><strong>स्वीकृति संदर्भ:</strong> ${v.sanctionRef || 'स्वीकृत प्राक्कलन अनुसार'}&lt;/div&gt; &lt;div class="mb-2"&gt;&lt;strong&gt;कार्य अवधि:&lt;/strong&gt; ${v.fromDate} से ${v.toDate} (${v.daysCount} दिवस) | दैनिक दर: ₹${v.uniformRate}/दिन&lt;/div&gt; &lt;div class="p-2 mb-2 bg-light rounded border"&gt; &lt;strong&gt;वित्तीय लेखा:&lt;/strong&gt; स्वीकृत राशि: ₹${v.sanctionedAmt || 0} | पूर्व व्यय: ₹${v.previousExp || 0} | वर्तमान देयक: &lt;strong&gt;₹${v.currentBill || v.totalAmount}</strong> | शेष राशि: <strong>₹${v.remainingAmt || 0}&lt;/strong&gt; &lt;/div&gt; ${qtyBlock}
+<div class="mb-3"><strong>माप प्रभारी अधिकारी:</strong> ${v.inchargeName} (${v.inchargeRank})</div>
+<h6 class="fw-bold text-primary">मस्टररोल श्रमिक सूची (${v.items.length} श्रमिक):&lt;/h6&gt; &lt;div class="table-responsive"&gt; &lt;table class="table table-sm table-bordered"&gt; &lt;thead class="table-light"&gt;&lt;tr&gt;&lt;th&gt;#&lt;/th&gt;&lt;th&gt;ID&lt;/th&gt;&lt;th&gt;वेंडर नं&lt;/th&gt;&lt;th&gt;नाम&lt;/th&gt;&lt;th&gt;खाता&lt;/th&gt;&lt;th&gt;IFSC&lt;/th&gt;&lt;th&gt;दिवस&lt;/th&gt;&lt;th&gt;दर&lt;/th&gt;&lt;th&gt;कुल राशि&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt; &lt;tbody&gt;${rows}</tbody>
+</table>
+</div>
+`;
+
+new bootstrap.Modal(document.getElementById('voucherDetailsModal')).show();
+}
+
+function actVoucher(vNo, act) {
+let reason = "";
+if (act === 'REJECT') { reason = prompt("रिजेक्ट करने का कारण लिखें:"); if (!reason) return; }
+if (confirm("वाउचर " + vNo + " पर कार्रवाई (" + act + ") करें?")) {
+google.script.run.withSuccessHandler(function(msg){ alert(msg); loadAdminVouchers(); }).adminActionOnVoucher(vNo, act, reason);
+}
+}
+
+function loadAdminApprovedVouchersHistory() {
+google.script.run.withSuccessHandler(function(list){
+let h = "";
+if (!list || list.length === 0) {
+h = '<tr><td colspan="8" class="text-center text-muted p-3">कोई स्वीकृत वाउचर नहीं मिला।</td></tr>';
+} else {
+list.forEach(v => {
+h += <tr&gt; &lt;td class="fw-bold text-primary"&gt;${v.voucherNo}</td>
+<td><span class="badge bg-secondary">{v.workDesc}</td>
+<td>{v.labourCount}</td>
+<td class="fw-bold text-success">₹{v.approvedAt}</td>
+<td><a href="${v.pdfUrl}" target="_blank" class="btn btn-sm btn-outline-danger fw-bold">📄 PDF देखें</a></td>
+</tr>`;
+});
+}
+document.querySelector('#adminHistoryTable tbody').innerHTML = h;
+}).getAdminApprovedVouchersHistory(currentUser.range);
+}
+
+// ----------------- HEAD OFFICE -----------------
+function loadHeadOfficeData() {
+document.querySelector('#hoTable tbody').innerHTML = "<tr><td colspan='9' class='text-center p-3 text-primary'>डेटा लोड हो रहा है...</td></tr>";
+google.script.run.withSuccessHandler(function(list){
+let h = "";
+if (!list || list.length === 0) h = "<tr><td colspan='9' class='text-center text-muted p-4'>कोई वाउचर साझा नहीं किया गया है।</td></tr>";
+else {
+list.forEach(v => {
+h += '<tr><td class="fw-bold text-primary">' + v.voucherNo + '</td><td>' + v.range + '</td><td>' + v.workDesc + '</td><td class="text-center">' + v.labourCount + '</td><td class="fw-bold text-success">₹' + v.totalAmount + '</td><td>' + v.dateRange + '</td><td><a href="' + v.exportUrl + '" target="_blank" class="btn btn-sm btn-primary">🔒 Locked Sheet</a></td><td><a href="' + v.pdfUrl + '" target="_blank" class="btn btn-sm btn-outline-danger">📄 Complete PDF</a></td><td><a href="' + v.csvUrl + '" target="_blank" class="btn btn-sm btn-success me-1">CSV</a><a href="' + v.xlsxUrl + '" target="_blank" class="btn btn-sm btn-outline-secondary">Excel</a></td></tr>';
+});
+}
+document.querySelector('#hoTable tbody').innerHTML = h;
+}).getHeadOfficeDashboardData();
+}
+</script>
 </body>
 </html>
